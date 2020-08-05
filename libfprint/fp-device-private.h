@@ -28,6 +28,7 @@ typedef struct
 
   GUsbDevice  *usb_device;
   const gchar *virtual_env;
+  gpointer     udev_data;
 
   gboolean     is_open;
 

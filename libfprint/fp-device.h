@@ -42,7 +42,7 @@ G_DECLARE_DERIVABLE_TYPE (FpDevice, fp_device, FP, DEVICE, GObject)
  */
 typedef enum {
   FP_DEVICE_TYPE_VIRTUAL,
-  FP_DEVICE_TYPE_SPI,
+  FP_DEVICE_TYPE_UDEV,
   FP_DEVICE_TYPE_USB,
 } FpDeviceType;
 

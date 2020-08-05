@@ -48,6 +48,7 @@ enum {
   PROP_SCAN_TYPE,
   PROP_FPI_ENVIRON,
   PROP_FPI_USB_DEVICE,
+  PROP_FPI_UDEV_DATA,
   PROP_FPI_DRIVER_DATA,
   N_PROPS
 };
@@ -158,6 +159,7 @@ fp_device_finalize (GObject *object)
 
   g_clear_object (&priv->usb_device);
   g_clear_pointer (&priv->virtual_env, g_free);
+  g_clear_object (&priv->udev_data);
 
   G_OBJECT_CLASS (fp_device_parent_class)->finalize (object);
 }
@@ -225,6 +227,13 @@ fp_device_set_property (GObject      *object,
     case PROP_FPI_USB_DEVICE:
       if (cls->type == FP_DEVICE_TYPE_USB)
         priv->usb_device = g_value_dup_object (value);
+      else
+        g_assert (g_value_get_object (value) == NULL);
+      break;
+
+    case PROP_FPI_UDEV_DATA:
+      if (cls->type == FP_DEVICE_TYPE_UDEV)
+        priv->udev_data = g_value_dup_object (value);
       else
         g_assert (g_value_get_object (value) == NULL);
       break;
@@ -363,6 +372,19 @@ fp_device_class_init (FpDeviceClass *klass)
                          "USB Device",
                          "Private: The USB device for the device",
                          G_USB_TYPE_DEVICE,
+                         G_PARAM_STATIC_STRINGS | G_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY);
+  /**
+   * FpDevice::fpi-udev-data: (skip)
+   *
+   * This property is only for internal purposes.
+   *
+   * Stability: private
+   */
+  properties[PROP_FPI_UDEV_DATA] =
+    g_param_spec_object ("fpi-udev-data",
+                         "Udev opaque data",
+                         "Private: The opaque data that the checkhook returned",
+                         G_TYPE_OBJECT,
                          G_PARAM_STATIC_STRINGS | G_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY);
 
   /**
@@ -592,6 +614,7 @@ fp_device_open (FpDevice           *device,
       break;
 
     case FP_DEVICE_TYPE_VIRTUAL:
+	case FP_DEVICE_TYPE_UDEV:
       break;
 
     default:

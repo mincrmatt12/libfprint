@@ -24,6 +24,12 @@
 #include "fpi-device.h"
 #include <gusb.h>
 
+#include <config.h>
+
+#ifdef HAVE_UDEV
+#include <gudev/gudev.h>
+#endif
+
 /**
  * SECTION: fp-context
  * @title: FpContext
@@ -375,6 +381,42 @@ fp_context_enumerate (FpContext *context)
           g_debug ("created");
         }
     }
+
+
+#ifdef HAVE_UDEV
+  {
+	  g_autoptr(GUdevClient) udev_client = g_udev_client_new(NULL);
+
+	  /* Handle UDEV devices */
+	  for (i = 0; i < priv->drivers->len; i++) {
+		  GType driver = g_array_index (priv->drivers, GType, i);
+		  g_autoptr(FpDeviceClass) cls = g_type_class_ref (driver);
+		  const FpIdEntry *entry;
+
+		  if (cls->type != FP_DEVICE_TYPE_UDEV)
+			continue;
+
+		  for (entry = cls->id_table; entry->pid; entry++)
+			{
+			  GObject *check_result = entry->checkhook(udev_client, entry->checkarg);
+
+			  if (!check_result) continue;
+
+			  g_debug ("Udev hook matched.");
+			  priv->pending_devices++;
+			  g_async_initable_new_async (driver,
+										  G_PRIORITY_LOW,
+										  priv->cancellable,
+										  async_device_init_done_cb,
+										  context,
+										  "fpi-udev-data", check_result,
+										  "fpi-driver-data", entry->driver_data,
+										  NULL);
+			  g_debug ("created");
+			}
+	  }
+  }
+#endif
 
   while (priv->pending_devices)
     g_main_context_iteration (NULL, TRUE);
