@@ -252,7 +252,7 @@ fp_device_set_property (GObject      *object,
 
     case PROP_FPI_UDEV_DATA:
       if (cls->type == FP_DEVICE_TYPE_UDEV)
-        priv->udev_data = g_value_dup_object (value);
+        priv->udev_data = g_value_get_object (value);
       else
         g_assert (g_value_get_object (value) == NULL);
       break;
