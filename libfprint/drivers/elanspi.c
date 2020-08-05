@@ -143,8 +143,8 @@ GObject * elanspi_udev_check_acpi_hid(GUdevClient *client, const void* arg) {
 	GObject *udev_data_ = g_object_new(elanspi_udev_data_get_type(), NULL);
 	ElanSpiUdevData *udev_data = ELANSPI_UDEV_DATA(udev_data_);
 
-	udev_data->hid_device = hid_device;
-	udev_data->spi_device = spi_device;
+	udev_data->hid_device = g_strdup(hid_device);
+	udev_data->spi_device = g_strdup(spi_device);
 	udev_data->mode = 1; // who knows
 
 	return udev_data_;
@@ -332,7 +332,6 @@ static void dev_open(FpImageDevice *dev) {
 	int spi_fd = open(dat->spi_device, O_RDWR);
 	int saved_errno = errno;
 	if (spi_fd < 0) {
-		g_debug("got %s", dat->spi_device);
 		g_set_error(&err, elanspi_init_error_quark(), 2, "unable to open spi: %s",
 				g_strerror(saved_errno));
 		fpi_image_device_open_complete(dev, err);
