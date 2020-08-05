@@ -167,7 +167,7 @@ static void elanspi_do_swreset(int fd, GError **err) {
 
 static void elanspi_spi_duplex(int fd, guint8* rx_buf, guint8* tx_buf, gsize length, GError **err) {
 	struct spi_ioc_transfer mesg;
-	memset(&mesg, 0, sizeof mesg), acpi_name;
+	memset(&mesg, 0, sizeof mesg);
 	mesg.len = length;
 	mesg.rx_buf = (__u64)rx_buf;
 	mesg.tx_buf = (__u64)tx_buf;
