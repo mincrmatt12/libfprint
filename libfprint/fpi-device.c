@@ -987,6 +987,7 @@ fpi_device_close_complete (FpDevice *device, GError *error)
       break;
 
     case FP_DEVICE_TYPE_VIRTUAL:
+	case FP_DEVICE_TYPE_UDEV:
       break;
 
     default:
