@@ -332,6 +332,7 @@ static void dev_open(FpImageDevice *dev) {
 	int spi_fd = open(dat->spi_device, O_RDWR);
 	int saved_errno = errno;
 	if (spi_fd < 0) {
+		g_debug("got %s", dat->spi_device);
 		g_set_error(&err, elanspi_init_error_quark(), 2, "unable to open spi: %s",
 				g_strerror(saved_errno));
 		fpi_image_device_open_complete(dev, err);
