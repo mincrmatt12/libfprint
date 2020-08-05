@@ -128,7 +128,7 @@ GObject * elanspi_udev_check_acpi_hid(GUdevClient *client, const void* arg) {
 			// Check if the acpi id is in the syspath
 			const gchar* sysfs = g_udev_device_get_sysfs_path(i->data);
 			if (!sysfs) continue;
-			if (strstr(acpi_name, sysfs)) {
+			if (strstr(sysfs, acpi_name)) {
 				g_debug("Found matching elan SPI %s", sysfs);
 
 				spi_device = g_strdup(g_udev_device_get_device_file(i->data));
