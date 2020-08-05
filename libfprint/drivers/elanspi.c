@@ -548,6 +548,8 @@ static enum elanspi_guess_result elanspi_guess_image(FpiDeviceElanSpi *self, gui
 	if (distavg < ELANSPI_MAX_REAL_DISTAVG) ++is_fp;
 	if (distavg > ELANSPI_MIN_EMPTY_DISTAVG) ++is_empty;
 
+	g_debug("guess %ld %ld %d %d", sq_stddev, distavg, is_fp, is_empty);
+
 	if (is_fp > is_empty) return ELANSPI_GUESS_FP;
 	else if (is_empty > is_fp) return ELANSPI_GUESS_EMPTY;
 	else return ELANSPI_GUESS_UNKNOWN;
@@ -757,7 +759,6 @@ static void elanspi_wait_finger_state_task(GTask *task, gpointer source_object, 
 	enum elanspi_guess_result target = self->waiting_up ? ELANSPI_GUESS_EMPTY : ELANSPI_GUESS_FP;
 	
 	while (1) {
-		G_DEBUG_HERE();
 		if (g_task_return_error_if_cancelled(task)) return;
 		// Capture an image
 		elanspi_capture_raw_image(self, raw_image, &err);
