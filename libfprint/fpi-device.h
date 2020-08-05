@@ -49,11 +49,13 @@ struct _FpIdEntry
       guint vid;
     };
     const gchar *virtual_envvar;
+#ifdef HAVE_UDEV
 	struct {
 		// Return null for no match, or a private object containing some information you want
 		GObject * (*checkhook)(GUdevClient *client, const void* arg);
 		const void *checkarg;
 	};
+#endif
   };
   guint64 driver_data;
 };
