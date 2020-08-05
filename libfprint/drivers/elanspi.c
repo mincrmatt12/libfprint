@@ -325,7 +325,7 @@ static void elanspi_send_regtable(FpiDeviceElanSpi *self, const struct elanspi_r
 
 static void elanspi_capture_raw_image(FpiDeviceElanSpi *self, guint16 *data_out, GError **err) {
 	guint8 rx_buf[2 + self->sensor_width*2];
-	guint8 tx_buf[2 + self->sensor_height*2];
+	guint8 tx_buf[2 + self->sensor_width*2];
 	memset(rx_buf, 0, sizeof rx_buf);
 	memset(tx_buf, 0, sizeof tx_buf);
 
@@ -347,7 +347,7 @@ static void elanspi_capture_raw_image(FpiDeviceElanSpi *self, guint16 *data_out,
 		tx_buf[1] = 0x00; // padding
 
 		// Send out command and receieve a full line of data
-		elanspi_spi_duplex(self->spi_fd, rx_buf, tx_buf, 2 * self->sensor_width*2, err);
+		elanspi_spi_duplex(self->spi_fd, rx_buf, tx_buf, 2 + self->sensor_width*2, err);
 		if (*err) return;
 
 		// Populate buffer
