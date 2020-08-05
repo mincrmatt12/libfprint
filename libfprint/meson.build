@@ -206,6 +206,7 @@ deps = [
     glib_dep,
     gobject_dep,
     gusb_dep,
+	gudev_dep,
     imaging_dep,
     mathlib_dep,
     nss_dep,
@@ -307,7 +308,6 @@ supported_devices = executable('fprint-list-supported-devices',
     dependencies: libfprint_private_dep,
     link_with: libfprint_drivers,
     install: false)
-
 
 if get_option('introspection')
     # We do *not* include the private header here
