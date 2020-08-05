@@ -768,6 +768,7 @@ static void elanspi_wait_finger_state_task(GTask *task, gpointer source_object, 
 			g_task_return_error(task, err);
 			return;
 		}
+		elanspi_correct_with_bg(self, raw_image);
 		// Check which type we think it is
 		enum elanspi_guess_result guess = elanspi_guess_image(self, raw_image);
 		if (guess == ELANSPI_GUESS_UNKNOWN) continue;
