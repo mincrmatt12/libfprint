@@ -165,6 +165,8 @@ static const FpIdEntry elanspi_id_table[] = {
 #define ELANSPI_MAX_REAL_DISTAVG 200
 #define ELANSPI_MIN_EMPTY_DISTAVG 1100
 
+#define ELANSPI_MIN_FRAMES_DEBOUNCE 10
+
 /* calibration constants from the windows driver */
 #define ELANSPI_MAX_STAGE1_CALIBRATION_MEAN 1000
 
