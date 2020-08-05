@@ -20,6 +20,14 @@
 
 #pragma once
 
+#include <config.h>
+
+#ifndef HAVE_UDEV
+#error "elanspi requries udev"
+#endif
+
+#include <gudev/gudev.h>
+
 /* TODO: get some way of configuring these constants */
 
 #include <glib.h>
@@ -139,11 +147,15 @@ static const struct elanspi_regtable elanspi_calibration_table = {
 	}
 };
 
+#define ELANSPI_DEV_HIDONLY 1
+
+GObject * elanspi_udev_check_acpi_hid(GUdevClient *client, const void* arg);
+
 /* ACPI ids from the windows driver INF file (ELAN7002 untested) */
 static const FpIdEntry elanspi_id_table[] = {
-	{.spitype = FPI_SPI_ID_TYPE_ACPI, .spiid = "ELAN7001", .driver_data = 0},
-	{.spitype = FPI_SPI_ID_TYPE_ACPI, .spiid = "ELAN7002", .driver_data = 0},
-	{.spitype = FPI_SPI_ID_TYPE_NONE, .spiid = NULL, .driver_data = 0}
+	{.checkhook = elanspi_udev_check_acpi_hid, .checkarg = "ELAN7001", .driver_data = ELANSPI_DEV_HIDONLY},
+	{.checkhook = elanspi_udev_check_acpi_hid, .checkarg = "ELAN7002", .driver_data = ELANSPI_DEV_HIDONLY},
+	{.checkhook = NULL, .checkarg = NULL, .driver_data = 0}
 };
 
 /* constats relating to detecting finger presence */
@@ -163,3 +175,4 @@ static const FpIdEntry elanspi_id_table[] = {
 
 /* bg rejection percent max */
 #define ELANSPI_BGREJECT_PERCENT_MAX 60
+
