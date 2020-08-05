@@ -503,13 +503,14 @@ static enum elanspi_guess_result elanspi_guess_image(FpiDeviceElanSpi *self, gui
 	gint64 sq_stddev = 0;
 
 	for (int i = 0; i < self->sensor_width*self->sensor_height; ++i) {
-		gint64 j = raw_image[i] - mean;
-		if (j < 0) j = -j;
+		gint64 j = (gint64)raw_image[i] - mean;
 		sq_stddev += j*j;
 	}
 
 	// Now, we compute the distavg
 	size_t frame_size = self->sensor_width * self->sensor_height;
+
+	sq_stddev /= frame_size;
 	
 	g_autofree guint16 *sorted = g_malloc(frame_size * 2);
 	memcpy(sorted, raw_image, frame_size * 2);
