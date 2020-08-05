@@ -234,6 +234,10 @@ static void elanspi_init(FpiDeviceElanSpi *self, GError **err) {
 
 	g_debug("Raw sensor dimensions %dx%d", raw_width, raw_height);
 
+	self->sensor_width = raw_width;
+	self->sensor_height = raw_height;
+	self->sensor_ic_version = 0;
+
 	// Do a hardcoded check:
 	// It appears that the format changed with the versions, as some sensors report 1+the correct values for these, indicating that the +1 was added later, hence why they are 
 	// labelled ICVersion 0
