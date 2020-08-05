@@ -129,9 +129,9 @@ GObject * elanspi_udev_check_acpi_hid(GUdevClient *client, const void* arg) {
 			const gchar* sysfs = g_udev_device_get_sysfs_path(i->data);
 			if (!sysfs) continue;
 			if (strstr(sysfs, acpi_name)) {
-				g_debug("Found matching elan SPI %s", sysfs);
 
 				spi_device = g_strdup(g_udev_device_get_device_file(i->data));
+				g_debug("Found matching elan SPI %s", spi_device);
 				break;
 			}
 		}
@@ -167,7 +167,7 @@ static void elanspi_do_swreset(int fd, GError **err) {
 
 static void elanspi_spi_duplex(int fd, guint8* rx_buf, guint8* tx_buf, gsize length, GError **err) {
 	struct spi_ioc_transfer mesg;
-	memset(&mesg, 0, sizeof mesg);
+	memset(&mesg, 0, sizeof mesg), acpi_name;
 	mesg.len = length;
 	mesg.rx_buf = (__u64)rx_buf;
 	mesg.tx_buf = (__u64)tx_buf;
