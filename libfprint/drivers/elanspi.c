@@ -757,6 +757,7 @@ static void elanspi_wait_finger_state_task(GTask *task, gpointer source_object, 
 	enum elanspi_guess_result target = self->waiting_up ? ELANSPI_GUESS_EMPTY : ELANSPI_GUESS_FP;
 	
 	while (1) {
+		G_DEBUG_HERE();
 		if (g_task_return_error_if_cancelled(task)) return;
 		// Capture an image
 		elanspi_capture_raw_image(self, raw_image, &err);
