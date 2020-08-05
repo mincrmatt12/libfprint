@@ -57,7 +57,7 @@ static const struct elanspi_sensor_entry elanspi_sensor_table[] = {
 	{0xA, 0x90, 0x40, 0x2, 0x1, "eFSA614RB"},
 	{0xB, 0x40, 0x58, 0x1, 0x1, "eFSA688RA"},
 	{0xC, 0x50, 0x50, 0x1, 0x0, "eFSA80SA"},
-	{0,   0,    0,    0,   0,   ""}
+	{0,   0,    0,    0,   0,   NULL}
 };
 
 struct elanspi_reg_entry {
