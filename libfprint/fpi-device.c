@@ -336,6 +336,26 @@ fpi_device_get_usb_device (FpDevice *device)
 }
 
 /**
+ * fpi_device_get_udev_data:
+ * @device: The #FpDevice
+ *
+ * Get the #GObject for this #FpDevice. Only permissible to call if the
+ * #FpDevice is of type %FP_DEVICE_TYPE_UDEV.
+ *
+ * Returns: The #GObject
+ */
+gpointer
+fpi_device_get_udev_data (FpDevice *device)
+{
+  FpDevicePrivate *priv = fp_device_get_instance_private (device);
+
+  g_return_val_if_fail (FP_IS_DEVICE (device), NULL);
+  g_return_val_if_fail (priv->type == FP_DEVICE_TYPE_UDEV, NULL);
+
+  return priv->udev_data;
+}
+
+/**
  * fpi_device_get_virtual_env:
  * @device: The #FpDevice
  *

@@ -24,6 +24,12 @@
 #include "fp-image.h"
 #include "fpi-print.h"
 
+#include <config.h>
+
+#ifdef HAVE_UDEV
+#include <gudev/gudev.h>
+#endif
+
 /**
  * FpIdEntry:
  *
@@ -43,6 +49,11 @@ struct _FpIdEntry
       guint vid;
     };
     const gchar *virtual_envvar;
+	struct {
+		// Return null for no match, or a private object containing some information you want
+		GObject * (*checkhook)(GUdevClient *client, const void* arg);
+		const void *checkarg;
+	};
   };
   guint64 driver_data;
 };
@@ -171,6 +182,7 @@ typedef enum {
 
 GUsbDevice  *fpi_device_get_usb_device (FpDevice *device);
 const gchar *fpi_device_get_virtual_env (FpDevice *device);
+gpointer     fpi_device_get_udev_data (FpDevice *device);
 //const gchar *fpi_device_get_spi_dev (FpDevice *device);
 
 
