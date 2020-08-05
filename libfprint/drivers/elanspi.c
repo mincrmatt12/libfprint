@@ -34,7 +34,11 @@
 #include <errno.h>
 
 GQuark elanspi_init_error_quark(void);
+GQuark elanspi_spi_error_quark(void);
+GQuark elanspi_calibration_error_quark(void);
 G_DEFINE_QUARK(elanspi-init-error-quark, elanspi_init_error)
+G_DEFINE_QUARK(elanspi-spi-error-quark, elanspi_spi_error)
+G_DEFINE_QUARK(elanspi-calibration-error-quark, elanspi_calibration_error)
 
 struct _FpiDeviceElanSpi {
 	FpImageDevice parent;
@@ -43,6 +47,9 @@ struct _FpiDeviceElanSpi {
 	unsigned char sensor_width, sensor_height, sensor_ic_version, sensor_id;
 	gboolean sensor_otp;
 	/* end sensor info */
+
+	/* background / calibration parameters */
+	guint16 *bg_image;
 
 	/* active SPI status info */
 	int spi_fd;
@@ -151,12 +158,40 @@ GObject * elanspi_udev_check_acpi_hid(GUdevClient *client, const void* arg) {
 }
 
 static void elanspi_do_hwreset(FpiDeviceElanSpi *self, GError **err) {
+	/*
+	 * TODO: Make this also work with the non-HID cases
+	 */
+
+	int fd = open(ELANSPI_UDEV_DATA(fpi_device_get_udev_data(FP_DEVICE(self)))->hid_device, O_RDWR);
+	if (fd < 0) {
+		g_set_error(err, elanspi_spi_error_quark(), 20, "unable to talk to hid: %s",
+				g_strerror(errno));
+		return;
+	}
+
+	guint8 buf[5] = {
+		0xe, 0, 0, 0, 0
+	};
+
+	if (ioctl(fd, HIDIOCSFEATURE(5), &buf) != 5) {
+		g_set_error(err, elanspi_spi_error_quark(), 20, "unable to talk to hid: %s",
+				g_strerror(errno));
+		return;
+	}
+
+	close(fd);
 }
 
 static void elanspi_do_swreset(int fd, GError **err) {
 	guint8 cmd = 0x31;
 	write(fd, &cmd, 1);
 	usleep(4000); // todo: maybe this will be the ssm?
+}
+
+static void elanspi_do_startcalib(int fd, GError **err) {
+	guint8 cmd = 0x4;
+	write(fd, &cmd, 1);
+	usleep(1000); // todo: maybe this will be the ssm?
 }
 
 /*
@@ -173,7 +208,7 @@ static void elanspi_spi_duplex(int fd, guint8* rx_buf, guint8* tx_buf, gsize len
 	mesg.tx_buf = (__u64)tx_buf;
 
 	if (ioctl(fd, SPI_IOC_MESSAGE(1), &mesg) < 0) {
-		g_set_error(err, elanspi_init_error_quark(), 20, "unable to talk to spi: %s",
+		g_set_error(err, elanspi_spi_error_quark(), 20, "unable to talk to spi: %s",
 				g_strerror(errno));
 	}
 }
@@ -210,12 +245,215 @@ static guint8 elanspi_read_register(int fd, guint8 addr, GError **err) {
 	return resp[1];
 }
 
+static void elanspi_write_register(int fd, guint8 addr, guint8 value, GError **err) {
+	guint8 cmd[2] = {addr | 0x80, value};
+	if (write(fd, &cmd, 2) != 2) {
+		g_set_error(err, elanspi_spi_error_quark(), 20, "unable to talk to spi: %s",
+				g_strerror(errno));
+	}
+}
+
+/*
+ * Set "OTP" Parameters: something to do with dac calibration (name from the driver logs)
+ */
+static void elanspi_set_otp_parameters(int fd, GError **err) {
+	// SettingOTPParameter
+	guint8 vref_trim1 = elanspi_read_register(fd, 0x3d, err);
+	vref_trim1 &= 0x3f; // mask out low bits
+	if (*err) return;
+	elanspi_write_register(fd, 0x3d, vref_trim1, err);
+	// Set inital value for register 0x28
+
+	elanspi_write_register(fd, 0x28, 0x78, err);
+	if (*err) return;
+
+	guint8 vcm_mode = 0;
+
+	for (int itercount = 0; itercount < 3; ++itercount) { // totally arbitrary timeout replacement
+		// TODO: timeout
+
+		guint8 regVal = elanspi_read_register(fd, 0x28, err);
+		if (*err) return;
+		if ((regVal & 0x40) == 0) {
+			// Do more stuff...
+			guint8 regVal2 = elanspi_read_register(fd, 0x27, err);
+			if (*err) return;
+			if (regVal2 & 0x80) {
+				vcm_mode = 2;
+				break;
+			}
+			vcm_mode = regVal2 & 0x1;
+			if ((regVal2 & 6) == 6) {
+				guint8 reg_dac2 = elanspi_read_register(fd, 7, err);
+				if (*err) return;
+				reg_dac2 |= 0x80;
+				// rewrite it back
+				elanspi_write_register(fd, 7, reg_dac2, err);
+				elanspi_write_register(fd, 10, 0x97, err);
+				break;
+			}
+		}
+		// otherwise continue loop
+	}
+
+	// Set VCM mode
+	if (vcm_mode == 2) {
+		elanspi_write_register(fd, 0xb, 0x72, err);
+		elanspi_write_register(fd, 0xc, 0x62, err);
+	} else if (vcm_mode == 1) {
+		elanspi_write_register(fd, 0xb, 0x71, err);
+		elanspi_write_register(fd, 0xc, 0x49, err);
+	}
+}
+
+static void elanspi_write_regtable_entries(int fd, const struct elanspi_reg_entry *entries, GError **err) {
+	for (const struct elanspi_reg_entry *entry = entries; entry->addr != 0xff; ++entry) {
+		elanspi_write_register(fd, entry->addr, entry->value, err);
+		if (*err) return;
+	}
+}
+
+static void elanspi_send_regtable(FpiDeviceElanSpi *self, const struct elanspi_regtable *table, GError **err) {
+	for (int i = 0; table->entries[i].table; ++i) {
+		if (table->entries[i].sid == self->sensor_id) {
+			elanspi_write_regtable_entries(self->spi_fd, table->entries[i].table, err);
+			return;
+		}
+	}
+	elanspi_write_regtable_entries(self->spi_fd, table->other, err);
+}
+
+static void elanspi_capture_raw_image(FpiDeviceElanSpi *self, guint16 *data_out, GError **err) {
+	guint8 rx_buf[2 + self->sensor_width*2];
+	guint8 tx_buf[2 + self->sensor_height*2];
+	memset(rx_buf, 0, sizeof rx_buf);
+	memset(tx_buf, 0, sizeof tx_buf);
+
+	// Send sensor command 0x1
+	{
+		guint8 cmd = 0x1; // command 0x1 == CAPTURE_IMAGE
+		write(self->spi_fd, &cmd, 1); //TODO: check me for errors
+	}
+
+	for (int line = 0; line < self->sensor_height; ++line) {
+		// TODO: timeout this check
+		while (1) {
+			guint8 status = elanspi_read_status(self->spi_fd, err);
+			if (*err) return;
+			if (status & 4) break;
+		}
+
+		tx_buf[0] = 0x10; // command 0x10 == RECV_LINE
+		tx_buf[1] = 0x00; // padding
+
+		// Send out command and receieve a full line of data
+		elanspi_spi_duplex(self->spi_fd, rx_buf, tx_buf, 2 * self->sensor_width*2, err);
+		if (*err) return;
+
+		// Populate buffer
+		for (int col = 0; col < self->sensor_width; ++col) {
+			guint8 low = rx_buf[2 + col*2 + 1];
+			guint8 high = rx_buf[2 + col*2];
+
+			data_out[self->sensor_width * line + col] = low + high*0x100;
+		}
+	}
+}
+
+static int elanspi_mean_image(FpiDeviceElanSpi *self, guint16 *img) {
+	int total = 0;
+	for (int i = 0; i < self->sensor_width * self->sensor_height; ++i) {
+		total += img[i];
+	}
+	return total / (self->sensor_width * self->sensor_height);
+}
+
+/*
+ * Calibrate the sensor
+ */
+
+static void elanspi_calibrate_sensor(FpiDeviceElanSpi *self, GError **err) {
+	guint16 raw_image[self->sensor_width * self->sensor_height];
+	guint8 calibration_dac_value = 0;
+	int mean_value, i;
+
+	g_debug("Calibrating sensor");
+
+	// Set the "write protect" register (at least that's what I think it is)
+	//
+	// This must be set back to 0 on exiting this function
+	elanspi_write_register(self->spi_fd, 0, 0x5a, err);
+	if (*err) return;
+
+	// Send the "start calibration" command
+	elanspi_do_startcalib(self->spi_fd, err);
+	if (*err) goto out;
+
+	// Send the regtable for calibration
+	elanspi_send_regtable(self, &elanspi_calibration_table, err);
+	if (*err) goto out;
+
+	elanspi_capture_raw_image(self, raw_image, err);
+	if (*err) goto out;
+	
+	calibration_dac_value = ((elanspi_mean_image(self, raw_image) & 0xffff) + 0x80) >> 8;
+	if (0x3f < calibration_dac_value) calibration_dac_value = 0x3f;
+
+	elanspi_write_register(self->spi_fd, 0x6, calibration_dac_value - 0x40, err);
+	if (*err) goto out;
+
+	// Take the next image for mean calibration
+	elanspi_capture_raw_image(self, raw_image, err);
+	if (*err) goto out;
+
+	mean_value = elanspi_mean_image(self, raw_image);
+	g_debug("mean value 1 = %d", mean_value);
+
+	if (mean_value >= ELANSPI_MAX_STAGE1_CALIBRATION_MEAN) {
+		g_set_error(err, elanspi_calibration_error_quark(), 1, "Calibration initial mean value 1 is too large (%d >= %d). Try removing finger.", mean_value, ELANSPI_MAX_STAGE1_CALIBRATION_MEAN);
+		goto out;
+	}
+
+	// Increase sensor gain
+	elanspi_write_register(self->spi_fd, 0x5, 0x6f, err);
+	if (*err) goto out;
+
+	for (i = 0; i < ELANSPI_MAX_STAGE2_CALIBRATION_ATTEMPTS; ++i) {
+		elanspi_capture_raw_image(self, raw_image, err);
+		if (*err) goto out;
+		mean_value = elanspi_mean_image(self, raw_image);
+		if (mean_value >= ELANSPI_MIN_STAGE2_CALBIRATION_MEAN && mean_value <= ELANSPI_MAX_STAGE2_CALBIRATION_MEAN) {
+			g_debug("calibration ok at %d", i);
+			break;
+		}
+
+		if (mean_value < (ELANSPI_MIN_STAGE2_CALBIRATION_MEAN + (ELANSPI_MAX_STAGE2_CALBIRATION_MEAN - ELANSPI_MIN_STAGE2_CALBIRATION_MEAN) / 2))
+			calibration_dac_value--;
+		else
+			calibration_dac_value++;
+
+		elanspi_write_register(self->spi_fd, 0x6, calibration_dac_value - 0x40, err);
+	}
+
+	// Clear out this separately
+	elanspi_write_register(self->spi_fd, 0, 0x0, err);
+
+	// Retrieve background image
+	elanspi_capture_raw_image(self, self->bg_image, err);
+
+	return;
+out:
+	elanspi_write_register(self->spi_fd, 0, 0x0, err);
+}
+
 
 /* 
  * INIT ROUTINE:
  *
  * I'd make this use SSM, but spidev is synchronous, so save for running everything in a separate
  * thread, i'm not exactly sure if it would really help...
+ *
+ * TODO: Add GThread/GTask api to SPI comm stuff
  */
 
 static void elanspi_init(FpiDeviceElanSpi *self, GError **err) {
@@ -304,6 +542,17 @@ static void elanspi_init(FpiDeviceElanSpi *self, GError **err) {
 
 	elanspi_do_swreset(self->spi_fd, err);
 	if (*err) return;
+
+	if (self->sensor_otp) elanspi_set_otp_parameters(self->spi_fd, err);
+	if (*err) return;
+
+	// Allocate bg image data
+	if (self->bg_image) g_free(self->bg_image);
+	self->bg_image = g_malloc(self->sensor_width * self->sensor_width * 2);
+	
+	// Do calibration (also retrieves background image)
+	elanspi_calibrate_sensor(self, err);
+	if (*err) return;
 }
 
 static void dev_activate(FpImageDevice *dev) {
@@ -360,6 +609,15 @@ static void dev_close(FpImageDevice *dev) {
 static void fpi_device_elanspi_init(FpiDeviceElanSpi *self) {
 	self->spi_fd = -1;
 	self->sensor_id = 0xff;
+	self->bg_image = NULL;
+}
+
+static void fpi_device_elanspi_finalize(GObject *this) {
+	FpiDeviceElanSpi *self = FPI_DEVICE_ELANSPI(this);
+
+	g_free(self->bg_image);
+
+	G_OBJECT_CLASS(fpi_device_elanspi_parent_class)->finalize(this);
 }
 
 static void fpi_device_elanspi_class_init(FpiDeviceElanSpiClass *klass) {
@@ -376,4 +634,6 @@ static void fpi_device_elanspi_class_init(FpiDeviceElanSpiClass *klass) {
 	img_class->img_open = dev_open;
 	img_class->activate = dev_activate;
 	img_class->img_close = dev_close;
+
+	G_OBJECT_CLASS(klass)->finalize = fpi_device_elanspi_finalize;
 }
