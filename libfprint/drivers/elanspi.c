@@ -888,6 +888,10 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 				this_frame = g_malloc(sensor_size + sizeof(struct fpi_frame));
 				memset(this_frame, 0, sizeof(struct fpi_frame) + sensor_size);
 				elanspi_process_frame(self, raw_frame, this_frame->data);
+				
+				if (list_of_frames) {
+					g_debug("similarity %d", fpi_mean_sq_diff_norm(list_of_frames->data, this_frame->data, sensor_size));
+				}
 				list_of_frames = g_slist_prepend(list_of_frames, this_frame);
 				break;
 		}
