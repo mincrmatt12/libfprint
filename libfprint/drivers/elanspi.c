@@ -902,11 +902,6 @@ static void dev_activate(FpImageDevice *dev) {
 	elanspi_init(self, &err);
 	
 	fpi_image_device_activate_complete(dev, err);
-	// Begin waiting for a finger
-	
-	if (!err) {
-		elanspi_start_capturing(self);
-	}
 }
 
 static void dev_change_state(FpImageDevice *dev, FpiImageDeviceState state) {
