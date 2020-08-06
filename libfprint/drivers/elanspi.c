@@ -877,11 +877,6 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 				}
 
 				g_debug("adding frame");
-
-				if (g_slist_length(list_of_frames) >= ELANSPI_MIN_FRAMES_SWIPE) {
-					list_of_frames = g_slist_delete_link(list_of_frames, g_slist_last(list_of_frames));
-					g_debug("popping start");
-				}
 				
 				this_frame = g_malloc(sensor_size + sizeof(struct fpi_frame));
 				memset(this_frame, 0, sizeof(struct fpi_frame) + sensor_size);
