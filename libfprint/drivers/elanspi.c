@@ -881,6 +881,7 @@ static void dev_deactivate(FpImageDevice *dev) {
 	FpiDeviceElanSpi *self = FPI_DEVICE_ELANSPI(dev);
 
 	self->deactivating = 1;
+	fpi_image_device_deactivate_complete(dev, NULL);
 }
 
 static void dev_open(FpImageDevice *dev) {
