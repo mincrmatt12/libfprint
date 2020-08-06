@@ -797,8 +797,6 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 		g_task_return_error(task, err);
 	}
 
-	fpi_image_device_report_finger_status(FP_IMAGE_DEVICE(self), FALSE);
-
 	// If there is, we return this data
 	g_task_return_pointer(task, raw_image, g_free);
 	raw_image = NULL;
@@ -874,6 +872,7 @@ static void elanspi_capture_ssm_done(FpiSsm *ssm, FpDevice *dev, GError *err) {
 	self->current_state = ELANSPI_CAPTURE_NOT_RUNNING;
 	if (self->deactivating) fpi_image_device_deactivate_complete(FP_IMAGE_DEVICE(dev), err);
 	else {
+		fpi_image_device_report_finger_status(FP_IMAGE_DEVICE(self), FALSE);
 	}
 }
 
