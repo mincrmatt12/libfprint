@@ -56,8 +56,6 @@ struct _FpiDeviceElanSpi {
 
 	gboolean waiting_up;
 	gboolean deactivating;
-
-	FpiImageDeviceState dev_state;
 };
 
 G_DECLARE_FINAL_TYPE(FpiDeviceElanSpi, fpi_device_elanspi, FPI, DEVICE_ELANSPI, FpImageDevice);
@@ -671,12 +669,8 @@ static void elanspi_init(FpiDeviceElanSpi *self, GError **err) {
 enum elanspi_capture_states {
 	ELANSPI_CAPTURE_WAIT_DOWN,
 	ELANSPI_CAPTURE_GRAB_IMAGE,
+	ELANSPI_CAPTURE_WAIT_UP,
 	ELANSPI_CAPTURE_NSTATES
-};
-
-enum elanspi_stop_capture_states {
-	ELANSPI_STOP_CAPTURE_WAIT_UP,
-	ELANSPI_STOP_CAPTURE_NSTATES
 };
 
 static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object, gpointer task_Data, GCancellable *cancellable) {
@@ -746,7 +740,6 @@ static void elanspi_capture_fingerprint_done(GObject *source, GAsyncResult* res,
 
 	if (ptr == 0) {
 		fpi_ssm_jump_to_state(ssm, ELANSPI_CAPTURE_WAIT_DOWN);
-		g_debug("failed to get image data");
 		return; // didn't succeed
 	}
 
@@ -758,8 +751,6 @@ static void elanspi_capture_fingerprint_done(GObject *source, GAsyncResult* res,
 		elanspi_correct_with_bg(self, ptr);
 		elanspi_process_frame(self, ptr, img->data);
 		g_free(ptr);
-
-		g_debug("sent captured image");
 
 		// Send the image to the driver
 		fpi_image_device_image_captured(FP_IMAGE_DEVICE(self), img);
@@ -795,7 +786,6 @@ static void elanspi_wait_finger_state_task(GTask *task, gpointer source_object, 
 		if (guess == target) {
 			++debounce;
 			if (debounce == ELANSPI_MIN_FRAMES_DEBOUNCE) {
-				g_debug("got finger state");
 				g_task_return_boolean(task, 1);
 				return;
 			}
@@ -823,6 +813,9 @@ static void elanspi_wait_finger_state_done(GObject *source, GAsyncResult* res, g
 		return;
 	}
 
+	// Tell FPI about the finger state
+	fpi_image_device_report_finger_status(FP_IMAGE_DEVICE(source), !self->waiting_up);
+
 	// Advance to the next state
 	fpi_ssm_next_state(ssm);
 }
@@ -838,9 +831,14 @@ static void elanspi_capture_ssm_handler(FpiSsm *ssm, FpDevice *dev) {
 			self->waiting_up = 0;
 			g_task_run_in_thread(capture_task, elanspi_wait_finger_state_task);
 			break;
+		case ELANSPI_CAPTURE_WAIT_UP:
+			// Start wait finger down
+			capture_task = g_task_new(self, fpi_device_get_cancellable(dev), elanspi_wait_finger_state_done, ssm);
+			self->waiting_up = 1;
+			g_task_run_in_thread(capture_task, elanspi_wait_finger_state_task);
+			break;
 		case ELANSPI_CAPTURE_GRAB_IMAGE:
-			// Tell FPI about the finger state
-			fpi_image_device_report_finger_status(FP_IMAGE_DEVICE(dev), 1);
+			// Start wait finger down
 			capture_task = g_task_new(self, fpi_device_get_cancellable(dev), elanspi_capture_fingerprint_done, ssm);
 			g_task_run_in_thread(capture_task, elanspi_capture_fingerprint_task);
 			break;
@@ -849,47 +847,17 @@ static void elanspi_capture_ssm_handler(FpiSsm *ssm, FpDevice *dev) {
 	}
 }
 
-static void elanspi_stop_capture_ssm_handler(FpiSsm *ssm, FpDevice *dev) {
-	g_autoptr(GTask) capture_task = NULL;
-	FpiDeviceElanSpi *self = FPI_DEVICE_ELANSPI(dev);
-
-	switch (fpi_ssm_get_cur_state(ssm)) {
-		case ELANSPI_STOP_CAPTURE_WAIT_UP:
-			// Start wait finger down
-			capture_task = g_task_new(self, fpi_device_get_cancellable(dev), elanspi_wait_finger_state_done, ssm);
-			g_task_run_in_thread(capture_task, elanspi_wait_finger_state_task);
-			break;
-		default:
-			break;
-	}
-}
-
-static void elanspi_capture_ssm_done(FpiSsm *ssm, FpDevice *dev, GError *err) {
-}
-
-static void elanspi_stop_capture_ssm_done(FpiSsm *ssm, FpDevice *dev, GError *err) {
-	FpiDeviceElanSpi *self = FPI_DEVICE_ELANSPI(dev);
-	self->dev_state = FPI_IMAGE_DEVICE_STATE_INACTIVE;
-
-	if (self->deactivating) {
-		self->deactivating = 0;
-		fpi_image_device_deactivate_complete(FP_IMAGE_DEVICE(dev), err);
-		return;
-	}
-	if (!err)
-		fpi_image_device_report_finger_status(FP_IMAGE_DEVICE(dev), 0);
-	else
-		fpi_image_device_session_error(FP_IMAGE_DEVICE(dev), err);
-}
+static void elanspi_capture_ssm_done(FpiSsm *ssm, FpDevice *dev, GError *err);
 
 static void elanspi_start_capturing(FpiDeviceElanSpi *self) {
 	FpiSsm *ssm = fpi_ssm_new(FP_DEVICE(self), elanspi_capture_ssm_handler, ELANSPI_CAPTURE_NSTATES);
 	fpi_ssm_start(ssm, elanspi_capture_ssm_done);
 }
 
-static void elanspi_stop_capturing(FpiDeviceElanSpi *self) {
-	FpiSsm *ssm = fpi_ssm_new(FP_DEVICE(self), elanspi_stop_capture_ssm_handler, ELANSPI_STOP_CAPTURE_NSTATES);
-	fpi_ssm_start(ssm, elanspi_stop_capture_ssm_done);
+static void elanspi_capture_ssm_done(FpiSsm *ssm, FpDevice *dev, GError *err) {
+	FpiDeviceElanSpi *self = FPI_DEVICE_ELANSPI(dev);
+	if (self->deactivating) return;
+	elanspi_start_capturing(self);
 }
 
 static void dev_activate(FpImageDevice *dev) {
@@ -909,37 +877,11 @@ static void dev_activate(FpImageDevice *dev) {
 	}
 }
 
-static void dev_change_state(FpImageDevice *dev, FpiImageDeviceState state) {
-	FpiDeviceElanSpi *self = FPI_DEVICE_ELANSPI(dev);
-
-	if (self->dev_state == state) return;
-
-	switch (state) {
-		case FPI_IMAGE_DEVICE_STATE_AWAIT_FINGER_ON:
-			self->dev_state = state;
-			elanspi_start_capturing(self);
-			break;
-
-		case FPI_IMAGE_DEVICE_STATE_CAPTURE:
-			break;
-
-		case FPI_IMAGE_DEVICE_STATE_INACTIVE:
-		case FPI_IMAGE_DEVICE_STATE_AWAIT_FINGER_OFF:
-			elanspi_stop_capturing(self);
-			break;
-	}
-}
-
 static void dev_deactivate(FpImageDevice *dev) {
 	FpiDeviceElanSpi *self = FPI_DEVICE_ELANSPI(dev);
 
-	G_DEBUG_HERE();
-
 	self->deactivating = 1;
-	if (self->dev_state == FPI_IMAGE_DEVICE_STATE_INACTIVE)
-		fpi_image_device_deactivate_complete(dev, NULL);
-	else
-		dev_change_state(dev, FPI_IMAGE_DEVICE_STATE_INACTIVE);
+	fpi_image_device_deactivate_complete(dev, NULL);
 }
 
 static void dev_open(FpImageDevice *dev) {
@@ -988,7 +930,6 @@ static void fpi_device_elanspi_init(FpiDeviceElanSpi *self) {
 	self->spi_fd = -1;
 	self->sensor_id = 0xff;
 	self->bg_image = NULL;
-	self->dev_state = FPI_IMAGE_DEVICE_STATE_INACTIVE;
 }
 
 static void fpi_device_elanspi_finalize(GObject *this) {
@@ -1019,7 +960,6 @@ static void fpi_device_elanspi_class_init(FpiDeviceElanSpiClass *klass) {
 	img_class->img_open = dev_open;
 	img_class->activate = dev_activate;
 	img_class->deactivate = dev_deactivate;
-	img_class->change_state = dev_change_state;
 	img_class->img_close = dev_close;
 
 	G_OBJECT_CLASS(klass)->finalize = fpi_device_elanspi_finalize;
