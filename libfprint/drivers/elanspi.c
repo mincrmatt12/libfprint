@@ -549,7 +549,7 @@ static enum elanspi_guess_result elanspi_guess_image(FpiDeviceElanSpi *self, gui
 	if (distavg < ELANSPI_MAX_REAL_DISTAVG) ++is_fp;
 	if (distavg > ELANSPI_MIN_EMPTY_DISTAVG) ++is_empty;
 
-	g_debug("guess %ld %ld %d %d", sq_stddev, distavg, is_fp, is_empty);
+	//g_debug("guess %ld %ld %d %d", sq_stddev, distavg, is_fp, is_empty);
 
 	if (is_fp > is_empty) return ELANSPI_GUESS_FP;
 	else if (is_empty > is_fp) return ELANSPI_GUESS_EMPTY;
@@ -676,17 +676,20 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 	elanspi_capture_raw_image(self, raw_image, &err);
 	// Check for failure
 	if (err) {
+		g_debug("Capture raw image reported error");
 		g_task_return_error(task, err);
 		return;
 	}
 	// Make sure there's a finger there
 	if (elanspi_guess_image(self, raw_image) != ELANSPI_GUESS_FP) {
+		g_debug("Fingerprint wasn't found in the capture!");
 		// Complain
 		fpi_image_device_retry_scan(FP_IMAGE_DEVICE(self), FP_DEVICE_RETRY_TOO_SHORT);
 		// Stop the SSM
 		g_task_return_pointer(task, NULL, g_free); // failed
 		return;
 	}
+	g_debug("Got image, sending to callback!");
 	// If there is, we return this data
 	g_task_return_pointer(task, raw_image, g_free);
 	raw_image = NULL;
@@ -718,7 +721,7 @@ static void elanspi_capture_fingerprint_done(GObject *source, GAsyncResult* res,
 	FpiDeviceElanSpi *self = FPI_DEVICE_ELANSPI(source);
 	FpiSsm *ssm = user_data;
 
-	GError *err;
+	GError *err = NULL;
 	guint16 *ptr = g_task_propagate_pointer(G_TASK(res), &err); // frees
 
 	if (err) {
