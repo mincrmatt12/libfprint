@@ -791,8 +791,8 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 */
 	struct fpi_frame_asmbl_ctx ctx = {
 		.frame_width = self->sensor_width,
-		.frame_height = self->sensor_height,
-		.image_width = self->sensor_width + (self->sensor_width * 2 / 3),
+		.frame_height = self->sensor_height > ELANSPI_MAX_FRAME_HEIGHT ? ELANSPI_MAX_FRAME_HEIGHT : self->sensor_height,
+		.image_width = self->sensor_width + (self->sensor_width * 3 / 5),
 		.get_pixel = elanspi_get_pixel
 	};
 
@@ -851,7 +851,7 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 				g_debug("got empty frame");
 				if (g_slist_length(list_of_frames) >= ELANSPI_MIN_FRAMES_SWIPE) {
 					g_debug("have enough frames");
-					if (empty_counter >= ELANSPI_MIN_FRAMES_SWIPE / 2) {
+					if (empty_counter >= ELANSPI_MIN_FRAMES_SWIPE / 3) {
 						g_debug("have enough counter, done");
 						// we're done!
 						goto exitloop;
@@ -877,25 +877,24 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 				g_debug("adding frame");
 
 				if (g_slist_length(list_of_frames) >= ELANSPI_MIN_FRAMES_SWIPE) {
-					list_of_frames = g_slist_delete_link(list_of_frames, list_of_frames);
+					list_of_frames = g_slist_delete_link(list_of_frames, g_slist_last(list_of_frames));
 					g_debug("popping start");
 				}
 				
 				this_frame = g_malloc(sensor_size + sizeof(struct fpi_frame));
 				memset(this_frame, 0, sizeof(struct fpi_frame) + sensor_size);
 				elanspi_process_frame(self, raw_frame, this_frame->data);
-				list_of_frames = g_slist_append(list_of_frames, this_frame);
+				list_of_frames = g_slist_prepend(list_of_frames, this_frame);
 				break;
 		}
 	}
 exitloop:
+	;
 	// discard last few frames
-	for (int i = 0; i < ELANSPI_SWIPE_FRAMES_DISCARD; ++i) {
-		list_of_frames = g_slist_delete_link(list_of_frames, g_slist_last(list_of_frames));
-	}
+	GSList *start = g_slist_nth(list_of_frames, ELANSPI_SWIPE_FRAMES_DISCARD);
 
-	fpi_do_movement_estimation (&ctx, list_of_frames);
-	FpImage *img = fpi_assemble_frames (&ctx, list_of_frames);
+	fpi_do_movement_estimation (&ctx, start);
+	FpImage *img = fpi_assemble_frames (&ctx, start);
 	img->flags |= FPI_IMAGE_PARTIAL | FPI_IMAGE_COLORS_INVERTED;
 	g_slist_free_full(list_of_frames, g_free);
 
