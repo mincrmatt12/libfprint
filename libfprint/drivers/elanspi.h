@@ -181,5 +181,5 @@ static const FpIdEntry elanspi_id_table[] = {
 /* bg rejection percent max */
 #define ELANSPI_BGREJECT_PERCENT_MAX 60
 
-#define ELANSPI_MAX_FRAME_HEIGHT 50
+#define ELANSPI_MAX_FRAME_HEIGHT 43
 

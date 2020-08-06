@@ -466,12 +466,13 @@ out:
  * TODO: get this to also reject and recapture background images if too great a percent is marked bad
  */
 
-static void elanspi_correct_with_bg(FpiDeviceElanSpi *self, guint16 *raw_image) {
+static void elanspi_correct_with_bg(FpiDeviceElanSpi *self, guint16 *raw_image, gboolean incl_noise) {
 	int count_min = 0;
 
 	for (int i = 0; i < self->sensor_width * self->sensor_height; ++i) {
 		if (raw_image[i] < self->bg_image[i]) {
 			count_min++;
+			if (!incl_noise) raw_image[i] = 0;
 		}
 		else {
 			raw_image[i] -= self->bg_image[i];
@@ -744,7 +745,7 @@ static gboolean elanspi_wait_for_finger_state(FpiDeviceElanSpi *self, enum elans
 		if (*err) {
 			return FALSE;
 		}
-		elanspi_correct_with_bg(self, raw_image);
+		elanspi_correct_with_bg(self, raw_image, 1);
 		// Check which type we think it is
 		enum elanspi_guess_result guess = elanspi_guess_image(self, raw_image);
 		if (guess == ELANSPI_GUESS_UNKNOWN) continue;
@@ -826,6 +827,7 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 	int empty_counter = 0;
 	int sensor_size = self->sensor_width * self->sensor_height;
 	guint16 raw_frame[sensor_size];
+	guint16 raw_frame_copy[sensor_size];
 	struct fpi_frame *this_frame = NULL;
 
 	GSList *list_of_frames = NULL;
@@ -846,7 +848,8 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 			return;
 		}
 
-		elanspi_correct_with_bg(self, raw_frame);
+		memcpy(raw_frame_copy, raw_frame, sensor_size*2);
+		elanspi_correct_with_bg(self, raw_frame, 1);
 		// Check the type of the frame
 		switch(elanspi_guess_image(self, raw_frame)) {
 			case ELANSPI_GUESS_EMPTY:
@@ -887,12 +890,13 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 				
 				this_frame = g_malloc(sensor_size + sizeof(struct fpi_frame));
 				memset(this_frame, 0, sizeof(struct fpi_frame) + sensor_size);
-				elanspi_process_frame(self, raw_frame, this_frame->data);
+				elanspi_correct_with_bg(self, raw_frame_copy, 0);
+				elanspi_process_frame(self, raw_frame_copy, this_frame->data);
 				
 				if (list_of_frames) {
 					gint similarity = fpi_mean_sq_diff_norm(list_of_frames->data, this_frame->data, sensor_size);
 					g_debug("similarity %d", similarity);
-					if (similarity < 3200) {
+					if (similarity < 3300) {
 						g_debug("ignoring...");
 						g_free(this_frame);
 						continue;
