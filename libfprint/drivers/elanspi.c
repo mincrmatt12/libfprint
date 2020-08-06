@@ -890,7 +890,13 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 				elanspi_process_frame(self, raw_frame, this_frame->data);
 				
 				if (list_of_frames) {
-					g_debug("similarity %d", fpi_mean_sq_diff_norm(list_of_frames->data, this_frame->data, sensor_size));
+					gint similarity = fpi_mean_sq_diff_norm(list_of_frames->data, this_frame->data, sensor_size);
+					g_debug("similarity %d", similarity);
+					if (similarity < 3200) {
+						g_debug("ignoring...");
+						g_free(this_frame);
+						continue;
+					}
 				}
 				list_of_frames = g_slist_prepend(list_of_frames, this_frame);
 				break;
