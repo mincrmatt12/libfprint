@@ -759,7 +759,7 @@ static gboolean elanspi_wait_for_finger_state(FpiDeviceElanSpi *self, enum elans
 }
 
 static unsigned char elanspi_get_pixel(struct fpi_frame_asmbl_ctx *ctx, struct fpi_frame *frame, unsigned int x, unsigned int y) {
-	return frame->data[y * ctx->frame_width + x];
+	return frame->data[(ctx->frame_height - y - 1) * ctx->frame_width + x];
 }
 
 static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object, gpointer task_Data, GCancellable *cancellable) {
@@ -851,7 +851,7 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 				g_debug("got empty frame");
 				if (g_slist_length(list_of_frames) >= ELANSPI_MIN_FRAMES_SWIPE) {
 					g_debug("have enough frames");
-					if (empty_counter <= ELANSPI_MIN_FRAMES_SWIPE / 2) {
+					if (empty_counter >= ELANSPI_MIN_FRAMES_SWIPE / 2) {
 						g_debug("have enough counter, done");
 						// we're done!
 						goto exitloop;
@@ -877,8 +877,7 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 				g_debug("adding frame");
 
 				if (g_slist_length(list_of_frames) >= ELANSPI_MIN_FRAMES_SWIPE) {
-					g_free(list_of_frames->data);
-					list_of_frames = g_slist_remove_link(list_of_frames, list_of_frames);
+					list_of_frames = g_slist_delete_link(list_of_frames, list_of_frames);
 					g_debug("popping start");
 				}
 				
@@ -890,9 +889,14 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 		}
 	}
 exitloop:
+	// discard last few frames
+	for (int i = 0; i < ELANSPI_SWIPE_FRAMES_DISCARD; ++i) {
+		list_of_frames = g_slist_delete_link(list_of_frames, g_slist_last(list_of_frames));
+	}
+
 	fpi_do_movement_estimation (&ctx, list_of_frames);
 	FpImage *img = fpi_assemble_frames (&ctx, list_of_frames);
-	img->flags |= FPI_IMAGE_PARTIAL | FPI_IMAGE_V_FLIPPED | FPI_IMAGE_COLORS_INVERTED;
+	img->flags |= FPI_IMAGE_PARTIAL | FPI_IMAGE_COLORS_INVERTED;
 	g_slist_free_full(list_of_frames, g_free);
 
 	g_task_return_pointer(task, img, g_object_unref);
