@@ -33,6 +33,7 @@
 #include <linux/types.h>
 #include <errno.h>
 
+
 GQuark elanspi_init_error_quark(void);
 GQuark elanspi_spi_error_quark(void);
 GQuark elanspi_calibration_error_quark(void);
@@ -703,7 +704,7 @@ static void elanspi_capture_fingerprint_done(GObject *source, GAsyncResult* res,
 	FpiSsm *ssm = user_data;
 
 	GError *err = NULL;
-	guint16 *ptr = g_task_propagate_pointer(G_TASK(res), &err); // frees
+	FpImage *ptr = g_task_propagate_pointer(G_TASK(res), &err); // frees
 
 	if (err) {
 		// Report the error back to the ssm
@@ -717,16 +718,8 @@ static void elanspi_capture_fingerprint_done(GObject *source, GAsyncResult* res,
 	}
 
 	else {
-		// Now we have a valid, malloc'd ptr to raw image data in ptr. Submit it to the library.
-
-		FpImage *img = fp_image_new(self->sensor_width, self->sensor_height);
-		img->flags |= /* TODO: check this based on TP_VID */ FPI_IMAGE_V_FLIPPED | FPI_IMAGE_PARTIAL | FPI_IMAGE_COLORS_INVERTED;
-		elanspi_correct_with_bg(self, ptr);
-		elanspi_process_frame(self, ptr, img->data);
-		g_free(ptr);
-
 		// Send the image to the driver
-		fpi_image_device_image_captured(FP_IMAGE_DEVICE(self), img);
+		fpi_image_device_image_captured(FP_IMAGE_DEVICE(self), ptr);
 
 		// Advance to waiting for finger up
 		fpi_ssm_next_state(ssm);
@@ -765,13 +758,19 @@ static gboolean elanspi_wait_for_finger_state(FpiDeviceElanSpi *self, enum elans
 	}
 }
 
+static unsigned char elanspi_get_pixel(struct fpi_frame_asmbl_ctx *ctx, struct fpi_frame *frame, unsigned int x, unsigned int y) {
+	return frame->data[y * ctx->frame_width + x];
+}
+
 static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object, gpointer task_Data, GCancellable *cancellable) {
 	FpiDeviceElanSpi *self = FPI_DEVICE_ELANSPI(source_object);
-	g_autofree guint16 *raw_image = g_malloc(self->sensor_width*self->sensor_height * 2);
 	GError *err = NULL;
 
 	// This takes so little time that we actually don't let it be cancelled
 	
+/*
+ * SINGLE IMAGE VERSION
+	g_autofree guint16 *raw_image = g_malloc(self->sensor_width*self->sensor_height * 2);
 	// Take an image
 	elanspi_capture_raw_image(self, raw_image, &err);
 	// Check for failure
@@ -789,17 +788,114 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 		g_task_return_pointer(task, NULL, g_free); // failed
 		return;
 	}
-	g_debug("Got image, waiting for finger up!");
+*/
+	struct fpi_frame_asmbl_ctx ctx = {
+		.frame_width = self->sensor_width,
+		.frame_height = self->sensor_height,
+		.image_width = self->sensor_width + (self->sensor_width * 2 / 3),
+		.get_pixel = elanspi_get_pixel
+	};
 
-	gboolean res = elanspi_wait_for_finger_state(self, ELANSPI_GUESS_EMPTY, cancellable, &err);
-	if (!res) return;
-	if (err) {
-		g_task_return_error(task, err);
+	g_debug("Starting image framelist read");
+
+	/*
+	 * Our strategy is to grab some number (N) of good frames.
+	 *
+	 * When we get a frame we:
+	 * 	- if FP:
+	 * 		if empty counter is 0
+	 *  		push into list_of_frames at the end
+	 *  	if empty counter is <= N/4
+	 *  		do nothing
+	 *  	else
+	 *  		empty_counter = 0
+	 *  		clear out list and init with this frame
+	 * 	- if empty:
+	 * 		add to counter:
+	 * 			if we have enough frames:
+	 *   			if counter >= N/2:
+	 *   				end
+	 *   		if we dont:
+	 *   			clear out list
+	 *  - if unknown:
+	 * 		ignore
+	 */
+
+	int empty_counter = 0;
+	int sensor_size = self->sensor_width * self->sensor_height;
+	guint16 raw_frame[sensor_size];
+	struct fpi_frame *this_frame = NULL;
+
+	g_autoptr(GSList) list_of_frames = NULL;
+
+	while (1) {
+		if (g_task_return_error_if_cancelled(task)) {
+			// we were cancelled
+			return;
+		}
+
+		// Try to grab a raw frame
+		elanspi_capture_raw_image(self, raw_frame, &err);
+
+		if (err) {
+			g_task_return_error(task, err);
+			g_slist_free_full(list_of_frames, g_free);
+			return;
+		}
+
+		elanspi_correct_with_bg(self, raw_frame);
+		// Check the type of the frame
+		switch(elanspi_guess_image(self, raw_frame)) {
+			case ELANSPI_GUESS_EMPTY:
+				++empty_counter;
+				g_debug("got empty frame");
+				if (g_slist_length(list_of_frames) >= ELANSPI_MIN_FRAMES_SWIPE) {
+					g_debug("have enough frames");
+					if (empty_counter <= ELANSPI_MIN_FRAMES_SWIPE / 2) {
+						g_debug("have enough counter, done");
+						// we're done!
+						goto exitloop;
+					}
+				}
+				break;
+			case ELANSPI_GUESS_UNKNOWN:
+				g_debug("got unknown frame, ignoring...");
+				break;
+			case ELANSPI_GUESS_FP:
+				if (empty_counter && list_of_frames) {
+					if (empty_counter <= ELANSPI_MIN_FRAMES_SWIPE / 4) {
+						g_debug("possible bounced fp"); // TODO: add a counter to me as well
+						continue;
+					}
+					else {
+						g_debug("too many empties, clearing");
+						g_slist_free_full(list_of_frames, g_free);
+						empty_counter = 0;
+					}
+				}
+
+				g_debug("adding frame");
+
+				if (g_slist_length(list_of_frames) >= ELANSPI_MIN_FRAMES_SWIPE) {
+					g_free(list_of_frames->data);
+					list_of_frames = g_slist_remove_link(list_of_frames, list_of_frames);
+					g_debug("popping start");
+				}
+				
+				this_frame = g_malloc(sensor_size + sizeof(struct fpi_frame));
+				memset(this_frame, 0, sizeof(struct fpi_frame) + sensor_size);
+				elanspi_process_frame(self, raw_frame, this_frame->data);
+				list_of_frames = g_slist_append(list_of_frames, this_frame);
+				break;
+		}
 	}
+exitloop:
+	fpi_do_movement_estimation (&ctx, list_of_frames);
+	FpImage *img = fpi_assemble_frames (&ctx, list_of_frames);
+	img->flags |= FPI_IMAGE_PARTIAL | FPI_IMAGE_V_FLIPPED | FPI_IMAGE_COLORS_INVERTED;
+	g_slist_free_full(list_of_frames, g_free);
 
-	// If there is, we return this data
-	g_task_return_pointer(task, raw_image, g_free);
-	raw_image = NULL;
+	g_task_return_pointer(task, img, g_object_unref);
 }
 
 static void elanspi_wait_finger_state_task(GTask *task, gpointer source_object, gpointer task_Data, GCancellable *cancellable) {
@@ -991,7 +1087,7 @@ static void fpi_device_elanspi_class_init(FpiDeviceElanSpiClass *klass) {
 	dev_class->full_name = "ElanTech Embedded Fingerprint Sensor";
 	dev_class->type = FP_DEVICE_TYPE_UDEV;
 	dev_class->id_table = elanspi_id_table;
-	dev_class->scan_type = FP_SCAN_TYPE_PRESS;
+	dev_class->scan_type = FP_SCAN_TYPE_SWIPE;
 
 	img_class->bz3_threshold = 10;
 	img_class->img_open = dev_open;
