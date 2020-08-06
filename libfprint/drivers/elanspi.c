@@ -857,7 +857,6 @@ static void elanspi_stop_capture_ssm_handler(FpiSsm *ssm, FpDevice *dev) {
 		case ELANSPI_STOP_CAPTURE_WAIT_UP:
 			// Start wait finger down
 			capture_task = g_task_new(self, fpi_device_get_cancellable(dev), elanspi_wait_finger_state_done, ssm);
-			self->waiting_up = 1;
 			g_task_run_in_thread(capture_task, elanspi_wait_finger_state_task);
 			break;
 		default:
