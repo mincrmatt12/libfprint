@@ -747,7 +747,7 @@ static void elanspi_capture_fingerprint_done(GObject *source, GAsyncResult* res,
 		// Now we have a valid, malloc'd ptr to raw image data in ptr. Submit it to the library.
 
 		FpImage *img = fp_image_new(self->sensor_width, self->sensor_height);
-		img->flags |= /* TODO: check this based on TP_VID */ FPI_IMAGE_V_FLIPPED | FPI_IMAGE_PARTIAL;
+		img->flags |= /* TODO: check this based on TP_VID */ FPI_IMAGE_V_FLIPPED | FPI_IMAGE_PARTIAL | FPI_IMAGE_COLORS_INVERTED;
 		elanspi_correct_with_bg(self, ptr);
 		elanspi_process_frame(self, ptr, img->data);
 		g_free(ptr);
