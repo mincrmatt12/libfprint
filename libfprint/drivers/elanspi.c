@@ -687,15 +687,17 @@ static void elanspi_process_frame(FpiDeviceElanSpi *self, const guint16 *data_in
 	guint16 lvl2 = data_in_sorted[frame_size * 65 / 100];
 	guint16 lvl3 = data_in_sorted[frame_size - 1];
 
-	for (int i = 0; i < frame_size; ++i) {
-		guint16 px = data_in[i];
-		if (lvl0 <= px && px < lvl1)
-			px = (px - lvl0) * 99 / (lvl1 - lvl0);
-		else if (lvl1 <= px && px < lvl2)
-			px = 99 + ((px - lvl1) * 56 / (lvl2 - lvl1));
-		else                      // (lvl2 <= px && px <= lvl3)
-			px = 155 + ((px - lvl2) * 100 / (lvl3 - lvl2));
-		data_out[i] = px;
+	for (int i = 0; i < self->sensor_height; ++i) {
+		for (int j = 0; j < self->sensor_width; ++j) {
+			guint16 px = data_in[(self->sensor_height - i - 1) * self->sensor_width + j];
+			if (lvl0 <= px && px < lvl1)
+				px = (px - lvl0) * 99 / (lvl1 - lvl0);
+			else if (lvl1 <= px && px < lvl2)
+				px = 99 + ((px - lvl1) * 56 / (lvl2 - lvl1));
+			else                      // (lvl2 <= px && px <= lvl3)
+				px = 155 + ((px - lvl2) * 100 / (lvl3 - lvl2));
+			*data_out++ = px;
+		}
 	}
 }
 
@@ -759,7 +761,7 @@ static gboolean elanspi_wait_for_finger_state(FpiDeviceElanSpi *self, enum elans
 }
 
 static unsigned char elanspi_get_pixel(struct fpi_frame_asmbl_ctx *ctx, struct fpi_frame *frame, unsigned int x, unsigned int y) {
-	return frame->data[(ctx->frame_height - y - 1) * ctx->frame_width + x];
+	return frame->data[y * ctx->frame_width + x];
 }
 
 static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object, gpointer task_Data, GCancellable *cancellable) {
