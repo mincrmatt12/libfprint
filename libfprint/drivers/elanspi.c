@@ -847,17 +847,12 @@ static void elanspi_capture_ssm_handler(FpiSsm *ssm, FpDevice *dev) {
 	}
 }
 
-static void elanspi_capture_ssm_done(FpiSsm *ssm, FpDevice *dev, GError *err);
+static void elanspi_capture_ssm_done(FpiSsm *ssm, FpDevice *dev, GError *err) {
+}
 
 static void elanspi_start_capturing(FpiDeviceElanSpi *self) {
 	FpiSsm *ssm = fpi_ssm_new(FP_DEVICE(self), elanspi_capture_ssm_handler, ELANSPI_CAPTURE_NSTATES);
 	fpi_ssm_start(ssm, elanspi_capture_ssm_done);
-}
-
-static void elanspi_capture_ssm_done(FpiSsm *ssm, FpDevice *dev, GError *err) {
-	FpiDeviceElanSpi *self = FPI_DEVICE_ELANSPI(dev);
-	if (self->deactivating) return;
-	elanspi_start_capturing(self);
 }
 
 static void dev_activate(FpImageDevice *dev) {
