@@ -167,7 +167,7 @@ static const FpIdEntry elanspi_id_table[] = {
 
 #define ELANSPI_MIN_FRAMES_DEBOUNCE 9
 #define ELANSPI_SWIPE_FRAMES_DISCARD 3
-#define ELANSPI_MIN_FRAMES_SWIPE (10+ELANSPI_SWIPE_FRAMES_DISCARD)
+#define ELANSPI_MIN_FRAMES_SWIPE (16+ELANSPI_SWIPE_FRAMES_DISCARD)
 
 /* calibration constants from the windows driver */
 #define ELANSPI_MAX_STAGE1_CALIBRATION_MEAN 1000
@@ -179,4 +179,6 @@ static const FpIdEntry elanspi_id_table[] = {
 
 /* bg rejection percent max */
 #define ELANSPI_BGREJECT_PERCENT_MAX 60
+
+#define ELANSPI_MAX_FRAME_HEIGHT 50
 
