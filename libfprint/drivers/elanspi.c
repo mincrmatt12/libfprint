@@ -1105,6 +1105,7 @@ static void fpi_device_elanspi_class_init(FpiDeviceElanSpiClass *klass) {
 	dev_class->type = FP_DEVICE_TYPE_UDEV;
 	dev_class->id_table = elanspi_id_table;
 	dev_class->scan_type = FP_SCAN_TYPE_SWIPE;
+	dev_class->nr_enroll_stages = 7; // these sensors are very hit or miss, may as well record a few extras
 
 	img_class->bz3_threshold = 10;
 	img_class->img_open = dev_open;
