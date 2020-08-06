@@ -884,7 +884,6 @@ static void elanspi_stop_capture_ssm_done(FpiSsm *ssm, FpDevice *dev, GError *er
 }
 
 static void elanspi_start_capturing(FpiDeviceElanSpi *self) {
-	if (self->dev_state == FPI_IMAGE_DEVICE_STATE_INACTIVE) return;
 	FpiSsm *ssm = fpi_ssm_new(FP_DEVICE(self), elanspi_capture_ssm_handler, ELANSPI_CAPTURE_NSTATES);
 	fpi_ssm_start(ssm, elanspi_capture_ssm_done);
 }
