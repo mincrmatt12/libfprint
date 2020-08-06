@@ -734,12 +734,15 @@ static void elanspi_capture_fingerprint_done(GObject *source, GAsyncResult* res,
 }
 
 // check_cancel_on is nullable
-static gboolean elanspi_wait_for_finger_state(FpiDeviceElanSpi *self, enum elanspi_guess_result target, GTask *check_cancel_on, GError **err) {
+static gboolean elanspi_wait_for_finger_state(FpiDeviceElanSpi *self, enum elanspi_guess_result target, GCancellable *check_cancel_on, GError **err) {
 	int debounce = 0;
 	guint16 raw_image[self->sensor_width*self->sensor_height];
 	
 	while (1) {
-		if (check_cancel_on && g_task_return_error_if_cancelled(check_cancel_on)) return FALSE;
+		if (check_cancel_on && g_cancellable_is_cancelled(check_cancel_on)) {
+			g_cancellable_set_error_if_cancelled(check_cancel_on, err);
+			return FALSE;
+		}
 		// Capture an image
 		elanspi_capture_raw_image(self, raw_image, err);
 		// Check for failure
@@ -788,7 +791,7 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 	}
 	g_debug("Got image, waiting for finger up!");
 
-	gboolean res = elanspi_wait_for_finger_state(self, ELANSPI_GUESS_EMPTY, task, &err);
+	gboolean res = elanspi_wait_for_finger_state(self, ELANSPI_GUESS_EMPTY, cancellable, &err);
 	if (!res) return;
 	if (err) {
 		g_task_return_error(task, err);
@@ -809,7 +812,7 @@ static void elanspi_wait_finger_state_task(GTask *task, gpointer source_object, 
 
 	enum elanspi_guess_result target = self->waiting_up ? ELANSPI_GUESS_EMPTY : ELANSPI_GUESS_FP;
 	
-	gboolean res = elanspi_wait_for_finger_state(self, target, task, &err);
+	gboolean res = elanspi_wait_for_finger_state(self, target, cancellable, &err);
 	if (err) {
 		g_task_return_error(task, err);
 		return;
