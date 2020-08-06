@@ -826,7 +826,7 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 	guint16 raw_frame[sensor_size];
 	struct fpi_frame *this_frame = NULL;
 
-	g_autoptr(GSList) list_of_frames = NULL;
+	GSList *list_of_frames = NULL;
 
 	while (1) {
 		if (g_task_return_error_if_cancelled(task)) {
@@ -840,6 +840,7 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 		if (err) {
 			g_task_return_error(task, err);
 			g_slist_free_full(list_of_frames, g_free);
+			list_of_frames = NULL;
 			return;
 		}
 
@@ -870,6 +871,7 @@ static void elanspi_capture_fingerprint_task(GTask *task, gpointer source_object
 					else {
 						g_debug("too many empties, clearing");
 						g_slist_free_full(list_of_frames, g_free);
+						list_of_frames = NULL;
 						empty_counter = 0;
 					}
 				}
