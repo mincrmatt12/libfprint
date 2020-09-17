@@ -33,7 +33,7 @@
 #include <glib.h>
 
 #define ELANSPI_TP_VID 0x04f3
-#define ELANSPI_TP_PID 0x3057
+#define ELANSPI_TP_PID 0x3087
 
 /* Sensor ID information copied from the windows driver */
 
