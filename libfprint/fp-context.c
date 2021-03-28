@@ -443,96 +443,103 @@ fp_context_enumerate (FpContext *context)
 
 #ifdef HAVE_UDEV
   {
-      g_autoptr(GUdevClient) udev_client = g_udev_client_new(NULL);
-      g_autoptr(GHashTable)  collected_udev_devices = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)g_ptr_array_unref);
-      g_autoptr(GHashTable)  collected_udev_checks = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)g_array_unref);
+    g_autoptr(GUdevClient) udev_client = g_udev_client_new (NULL);
+    g_autoptr(GHashTable)  collected_udev_devices = g_hash_table_new_full (NULL, NULL, NULL, (GDestroyNotify) g_ptr_array_unref);
+    g_autoptr(GHashTable)  collected_udev_checks = g_hash_table_new_full (NULL, NULL, NULL, (GDestroyNotify) g_array_unref);
 
-      /* Handle UDEV devices */
+    /* Handle UDEV devices */
 
-      /* Initialize hash table with checkargs (we do this to batch drivers that use the same checkhook (like ones that all use a common ACPI SPI, for example) */
-      for (i = 0; i < priv->drivers->len; i++) {
-          GType driver = g_array_index (priv->drivers, GType, i);
-          g_autoptr(FpDeviceClass) cls = g_type_class_ref (driver);
-          const FpIdEntry *entry;
+    /* Initialize hash table with checkargs (we do this to batch drivers that use the same checkhook (like ones that all use a common ACPI SPI, for example) */
+    for (i = 0; i < priv->drivers->len; i++)
+      {
+        GType driver = g_array_index (priv->drivers, GType, i);
+        g_autoptr(FpDeviceClass) cls = g_type_class_ref (driver);
+        const FpIdEntry *entry;
 
-          if (cls->type != FP_DEVICE_TYPE_UDEV)
-              continue;
+        if (cls->type != FP_DEVICE_TYPE_UDEV)
+          continue;
 
-          GArray *tgt = NULL;
-          GPtrArray *tgt_ptrs = NULL;
+        GArray *tgt = NULL;
+        GPtrArray *tgt_ptrs = NULL;
 
-          // check if we've created a garray 
-          if (!g_hash_table_contains(collected_udev_devices, cls->detect_udev)) {
-              tgt = g_array_new(0, 0, sizeof(gpointer));
-              tgt_ptrs = g_ptr_array_new_with_free_func(g_object_unref); // set in case we somehow don't end up using the data stored later (we steal it and send it directly to create)
-              g_hash_table_insert(collected_udev_checks, cls->detect_udev, tgt);
-              g_hash_table_insert(collected_udev_devices, cls->detect_udev, tgt_ptrs);
+        // check if we've created a garray
+        if (!g_hash_table_contains (collected_udev_devices, cls->detect_udev))
+          {
+            tgt = g_array_new (0, 0, sizeof (gpointer));
+            tgt_ptrs = g_ptr_array_new_with_free_func (g_object_unref);  // set in case we somehow don't end up using the data stored later (we steal it and send it directly to create)
+            g_hash_table_insert (collected_udev_checks, cls->detect_udev, tgt);
+            g_hash_table_insert (collected_udev_devices, cls->detect_udev, tgt_ptrs);
           }
-          else {
-              tgt = g_hash_table_lookup(collected_udev_checks, cls->detect_udev);
-              tgt_ptrs = g_hash_table_lookup(collected_udev_devices, cls->detect_udev);
+        else
+          {
+            tgt = g_hash_table_lookup (collected_udev_checks, cls->detect_udev);
+            tgt_ptrs = g_hash_table_lookup (collected_udev_devices, cls->detect_udev);
           }
 
-          for (entry = cls->id_table; entry->pid; entry++) {
-              // place opaque data for checking in array
-              g_array_append_val(tgt, entry->checkarg);
-              g_ptr_array_add(tgt_ptrs, NULL);
+        for (entry = cls->id_table; entry->pid; entry++)
+          {
+            // place opaque data for checking in array
+            g_array_append_val (tgt, entry->checkarg);
+            g_ptr_array_add (tgt_ptrs, NULL);
           }
       }
 
-      /* Call all checkers */
-      {
-        GHashTableIter iter;
-        gpointer checker, checkargs;
-        g_hash_table_iter_init(&iter, collected_udev_devices);
-        while (g_hash_table_iter_next(&iter, &checker, &checkargs)) {
-         GArray * checkargs_ = (GArray *)checkargs;
-         GPtrArray * results = (GPtrArray *)g_hash_table_lookup(collected_udev_devices, checker);
-         ((FpUdevDeviceDetectFunc)checker)(udev_client, checkargs_->len, (gpointer *)(void *)checkargs_->data, (GObject **)results->pdata);
+    /* Call all checkers */
+    {
+      GHashTableIter iter;
+      gpointer checker, checkargs;
+      g_hash_table_iter_init (&iter, collected_udev_devices);
+      while (g_hash_table_iter_next (&iter, &checker, &checkargs))
+        {
+          GArray * checkargs_ = (GArray *) checkargs;
+          GPtrArray * results = (GPtrArray *) g_hash_table_lookup (collected_udev_devices, checker);
+          ((FpUdevDeviceDetectFunc) checker)(udev_client, checkargs_->len, (gpointer *) (void *) checkargs_->data, (GObject **) results->pdata);
         }
-      }
+    }
 
-      // initialize devices
-      {
-        GHashTableIter iter;
-        gpointer checker, datas;
-        int offset = 0;
-        g_hash_table_iter_init(&iter, collected_udev_devices);
-        while (g_hash_table_iter_next(&iter, &checker, &datas)) {
-        offset = 0;
-         GPtrArray * datas_ = (GPtrArray *)datas;
+    // initialize devices
+    {
+      GHashTableIter iter;
+      gpointer checker, datas;
+      int offset = 0;
+      g_hash_table_iter_init (&iter, collected_udev_devices);
+      while (g_hash_table_iter_next (&iter, &checker, &datas))
+        {
+          offset = 0;
+          GPtrArray * datas_ = (GPtrArray *) datas;
 
-      for (i = 0; i < priv->drivers->len; i++) {
-		  GType driver = g_array_index (priv->drivers, GType, i);
-		  g_autoptr(FpDeviceClass) cls = g_type_class_ref (driver);
-		  const FpIdEntry *entry;
+          for (i = 0; i < priv->drivers->len; i++)
+            {
+              GType driver = g_array_index (priv->drivers, GType, i);
+              g_autoptr(FpDeviceClass) cls = g_type_class_ref (driver);
+              const FpIdEntry *entry;
 
-		  if (cls->type != FP_DEVICE_TYPE_UDEV)
-			continue;
+              if (cls->type != FP_DEVICE_TYPE_UDEV)
+                continue;
 
-          if (cls->detect_udev != checker)
-              continue;
+              if (cls->detect_udev != checker)
+                continue;
 
-		  for (entry = cls->id_table; entry->pid; entry++)
-			{
-              GObject *check_result = g_ptr_array_index(datas_, offset);
-              g_ptr_array_index(datas_, offset++) = NULL; // steal reference
+              for (entry = cls->id_table; entry->pid; entry++)
+                {
+                  GObject *check_result = g_ptr_array_index (datas_, offset);
+                  g_ptr_array_index (datas_, offset++) = NULL; // steal reference
 
-			  g_debug ("Udev hook matched.");
-			  priv->pending_devices++;
-			  g_async_initable_new_async (driver,
-										  G_PRIORITY_LOW,
-										  priv->cancellable,
-										  async_device_init_done_cb,
-										  context,
-										  "fpi-udev-data", check_result,
-										  "fpi-driver-data", entry->driver_data,
-										  NULL);
-			  g_debug ("created");
+                  g_debug ("Udev hook matched.");
+                  priv->pending_devices++;
+                  g_async_initable_new_async (driver,
+                                              G_PRIORITY_LOW,
+                                              priv->cancellable,
+                                              async_device_init_done_cb,
+                                              context,
+                                              "fpi-udev-data", check_result,
+                                              "fpi-driver-data", entry->driver_data,
+                                              NULL);
+                  g_debug ("created");
+                }
             }
-          }
         }
-	  }
+    }
   }
 #endif
 

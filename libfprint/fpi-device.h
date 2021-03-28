@@ -50,7 +50,7 @@ struct _FpIdEntry
     };
     const gchar *virtual_envvar;
 #ifdef HAVE_UDEV
-		const void *checkarg;
+    const void  *checkarg;
 #endif
   };
   guint64 driver_data;
@@ -66,7 +66,10 @@ struct _FpIdEntry
  *
  * The prototype of the function called for detecting custom udev devices.
  */
-typedef void (*FpUdevDeviceDetectFunc) (GUdevClient *client, size_t device_count, gpointer check_args_in[], GObject *udev_data_out[]);
+typedef void (*FpUdevDeviceDetectFunc) (GUdevClient *client,
+                                        size_t       device_count,
+                                        gpointer     check_args_in[],
+                                        GObject     *udev_data_out[]);
 #endif
 
 /**
@@ -84,6 +87,9 @@ typedef void (*FpUdevDeviceDetectFunc) (GUdevClient *client, size_t device_count
  *  the driver. Should return 0 if the device is unsupported and a positive
  *  score otherwise. The default score is 50 and the driver with the highest
  *  score will be loaded.
+ * @detect_udev: Class method detect supported devices using a library-shared
+ *  udev context. Can be shared between multiple different drivers, and the
+ *  library will batch calls to shared hooks.
  * @probe: Called immediately for all devices. Most drivers will not need to
  *   implement this. Drivers should setup the device identifier from the probe
  *   callback which will be used to verify the compatibility of stored
@@ -140,11 +146,12 @@ struct _FpDeviceClass
   FpScanType scan_type;
 
   /* Callbacks */
-  gint (*usb_discover) (GUsbDevice *usb_device);
+  gint                   (*usb_discover)(GUsbDevice *usb_device);
 #ifdef HAVE_UDEV
   FpUdevDeviceDetectFunc detect_udev;
 #endif
-  void (*probe)    (FpDevice *device);
+
+  void (*probe)(FpDevice * device);
   void (*open)     (FpDevice *device);
   void (*close)    (FpDevice *device);
   void (*enroll)   (FpDevice *device);

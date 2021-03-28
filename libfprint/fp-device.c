@@ -695,7 +695,7 @@ fp_device_open (FpDevice           *device,
       break;
 
     case FP_DEVICE_TYPE_VIRTUAL:
-	case FP_DEVICE_TYPE_UDEV:
+    case FP_DEVICE_TYPE_UDEV:
       break;
 
     default:
