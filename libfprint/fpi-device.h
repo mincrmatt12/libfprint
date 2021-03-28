@@ -50,15 +50,24 @@ struct _FpIdEntry
     };
     const gchar *virtual_envvar;
 #ifdef HAVE_UDEV
-	struct {
-		// Return null for no match, or a private object containing some information you want
-		GObject * (*checkhook)(GUdevClient *client, const void* arg);
 		const void *checkarg;
-	};
 #endif
   };
   guint64 driver_data;
 };
+
+#ifdef HAVE_UDEV
+/**
+ * FpUdevDeviceDetectFunc:
+ * @client: udev client
+ * @device_count: number of devices to check for (size of both arrays)
+ * @check_args_in: contains an array of void* taken from the checkarg of each #FpIdEntry
+ * @udev_data_out: if a device is detected, set the corresponding index from check_args_in from NULL to the new udev data #GObject.
+ *
+ * The prototype of the function called for detecting custom udev devices.
+ */
+typedef void (*FpUdevDeviceDetectFunc) (GUdevClient *client, size_t device_count, gpointer check_args_in[], GObject *udev_data_out[]);
+#endif
 
 /**
  * FpDeviceClass:
@@ -124,6 +133,7 @@ struct _FpDeviceClass
   const gchar     *full_name;
   FpDeviceType     type;
   const FpIdEntry *id_table;
+  /* Static callbacks */
 
   /* Defaults for device properties */
   gint       nr_enroll_stages;
@@ -131,6 +141,9 @@ struct _FpDeviceClass
 
   /* Callbacks */
   gint (*usb_discover) (GUsbDevice *usb_device);
+#ifdef HAVE_UDEV
+  FpUdevDeviceDetectFunc detect_udev;
+#endif
   void (*probe)    (FpDevice *device);
   void (*open)     (FpDevice *device);
   void (*close)    (FpDevice *device);
