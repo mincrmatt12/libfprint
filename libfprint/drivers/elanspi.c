@@ -1169,6 +1169,7 @@ elanspi_lookup_pixel_with_rotation (FpiDeviceElanSpi *self, const guint16 *data_
 
   if (rotation == ELANSPI_180_ROTATE)
     {
+      x1 = (self->sensor_width - x - 1);
       y1 = (self->sensor_height - y - 1);
     }
   else if (rotation == ELANSPI_90LEFT_ROTATE)
