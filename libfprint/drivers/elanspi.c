@@ -1275,7 +1275,6 @@ elanspi_process_frame (FpiDeviceElanSpi *self, const guint16 *data_in, guint8 *d
     for (int j = 0; j < self->frame_width; j += 1)
       data_in_sorted[offset++] = elanspi_lookup_pixel_with_rotation (self, data_in, i, j);
 
-  memcpy (data_in_sorted, data_in, frame_size * 2);
   qsort (data_in_sorted, frame_size, 2, cmp_u16);
   guint16 lvl0 = data_in_sorted[0];
   guint16 lvl1 = data_in_sorted[frame_size * 3 / 10];
