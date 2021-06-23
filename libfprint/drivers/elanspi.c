@@ -75,10 +75,8 @@ struct _FpiDeviceElanSpi
   guint16 *last_image;
   guint16 *prev_frame_image;
 
-  /* assembling ctx */
-  struct fpi_frame_asmbl_ctx assembling_ctx;
-  gint                       fp_empty_counter;
-  GSList                    *fp_frame_list;
+  gint     fp_empty_counter;
+  GSList  *fp_frame_list;
 
   /* wait ctx */
   gint     finger_wait_debounce;
@@ -1326,21 +1324,20 @@ elanspi_fp_frame_stitch_and_submit (FpiDeviceElanSpi *self)
 {
   g_autoptr(FpImage) img = NULL;
   g_autoptr(FpImage) scaled = NULL;
+  struct fpi_frame_asmbl_ctx assembling_ctx = {
+    .image_width = (self->frame_width * 3) / 2,
 
-  /* create assembling context */
+    .frame_width = self->frame_width,
+    .frame_height = self->frame_height,
 
-  self->assembling_ctx.image_width = (self->frame_width * 3) / 2;
-
-  self->assembling_ctx.frame_width = self->frame_width;
-  self->assembling_ctx.frame_height = self->frame_height;
-
-  self->assembling_ctx.get_pixel = elanspi_fp_assembling_get_pixel;
+    .get_pixel = elanspi_fp_assembling_get_pixel,
+  };
 
   /* stitch image */
   GSList *frame_start = g_slist_nth (self->fp_frame_list, ELANSPI_SWIPE_FRAMES_DISCARD);
 
-  fpi_do_movement_estimation (&self->assembling_ctx, frame_start);
-  img = fpi_assemble_frames (&self->assembling_ctx, frame_start);
+  fpi_do_movement_estimation (&assembling_ctx, frame_start);
+  img = fpi_assemble_frames (&assembling_ctx, frame_start);
   scaled = fpi_image_resize (img, 2, 2);
 
   scaled->flags |= FPI_IMAGE_PARTIAL | FPI_IMAGE_COLORS_INVERTED;
